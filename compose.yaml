@@ -1,0 +1,13 @@
+services:
+  rss-to-telegram:
+    build: .
+    env_file: .env
+    environment:
+      DATA_FILE: /app/data/rss-to-telegram.json
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 3000
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

@@ -1,0 +1,8 @@
+node_modules/
+.pnpm-store/
+dist/
+data/*.json
+data/*.tmp
+.env
+.DS_Store
+coverage/
