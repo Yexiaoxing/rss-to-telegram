@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   await store.load();
 
   const bot = createBot(config, store);
-  const summarizer = new Summarizer(config.openaiApiKey, config.openaiModel);
+  const summarizer = new Summarizer(config.openaiApiKey, config.openaiModel, config.openaiBaseUrl);
   const poller = new Poller(store, bot, summarizer, config);
   const app = createWebApp(store);
   const server = createServer(app);

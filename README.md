@@ -29,6 +29,7 @@ Optional:
 
 - `OPENAI_API_KEY`: enables AI summaries.
 - `OPENAI_MODEL`: defaults to `gpt-4o-mini`.
+- `OPENAI_BASE_URL`: optional OpenAI-compatible API endpoint override.
 - `POLL_INTERVAL_SECONDS`: defaults to `300`.
 - `WEB_HOST`: defaults to `127.0.0.1` locally. Compose sets the container to `0.0.0.0` but publishes only to host localhost.
 - `WEB_PORT`: defaults to `3000`.

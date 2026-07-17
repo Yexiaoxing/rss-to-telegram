@@ -5,8 +5,8 @@ import type { FeedItem, SummaryResult } from "./types.js";
 export class Summarizer {
   private readonly client?: OpenAI;
 
-  constructor(apiKey: string | undefined, private readonly model: string) {
-    this.client = apiKey ? new OpenAI({ apiKey }) : undefined;
+  constructor(apiKey: string | undefined, private readonly model: string, baseURL?: string) {
+    this.client = apiKey ? new OpenAI({ apiKey, baseURL }) : undefined;
   }
 
   async summarize(item: FeedItem, articleText?: string): Promise<SummaryResult> {

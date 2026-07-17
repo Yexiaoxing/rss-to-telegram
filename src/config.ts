@@ -5,6 +5,7 @@ export type AppConfig = {
   telegramAdminIds: Set<number>;
   openaiApiKey?: string;
   openaiModel: string;
+  openaiBaseUrl?: string;
   dataFile: string;
   pollIntervalSeconds: number;
   webHost: string;
@@ -44,6 +45,7 @@ export function loadConfig(): AppConfig {
     telegramAdminIds: new Set(adminIds),
     openaiApiKey: process.env.OPENAI_API_KEY?.trim() || undefined,
     openaiModel: process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini",
+    openaiBaseUrl: process.env.OPENAI_BASE_URL?.trim() || undefined,
     dataFile: process.env.DATA_FILE?.trim() || "./data/rss-to-telegram.json",
     pollIntervalSeconds: numberEnv("POLL_INTERVAL_SECONDS", 300),
     webHost: process.env.WEB_HOST?.trim() || "127.0.0.1",
