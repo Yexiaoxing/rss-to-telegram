@@ -24,8 +24,11 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
       "RSS to Telegram is running.",
       "Commands:",
       "/add <feed_url>",
+      "/addchannel <@channel_or_id> <feed_url>",
       "/remove <feed_url_or_id>",
+      "/removechannel <@channel_or_id> <feed_url_or_id>",
       "/list",
+      "/listchannel <@channel_or_id>",
       "/status",
       "/preview <feed_url>"
     ].join("\n"))
@@ -36,25 +39,8 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
     if (!urlArg) return ctx.reply("Usage: /add <feed_url>");
 
     try {
-      const url = normalizeUrl(urlArg);
-      const parsed = await parseFeed(url);
       const now = new Date().toISOString();
-      const existing = store.findFeedByUrl(url);
-      const feed: FeedRecord = existing ?? {
-        id: stableId(url),
-        url,
-        title: parsed.title,
-        siteUrl: parsed.siteUrl,
-        createdAt: now
-      };
-
-      await store.upsertFeed({
-        ...feed,
-        title: parsed.title || feed.title,
-        siteUrl: parsed.siteUrl || feed.siteUrl,
-        lastCheckedAt: now,
-        lastError: undefined
-      });
+      const { feed, title } = await upsertFeedFromUrl(store, urlArg, now);
 
       const chat = ctx.chat;
       const chatTitle = "title" in chat ? chat.title : ctx.from?.username;
@@ -69,9 +55,39 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
       };
       await store.upsertSubscription(subscription);
 
-      return ctx.reply(`Subscribed this chat to ${parsed.title || url}.`);
+      return ctx.reply(`Subscribed this chat to ${title || feed.url}.`);
     } catch (error) {
       return ctx.reply(`Could not add feed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+
+  bot.command("addchannel", async (ctx) => {
+    const args = commandParts(ctx.message.text);
+    if (args.length < 2) return ctx.reply("Usage: /addchannel <@channel_or_id> <feed_url>");
+
+    try {
+      const target = normalizeTelegramTarget(args[0]);
+      const feedUrl = args.slice(1).join(" ");
+      const channel = await ctx.telegram.getChat(target);
+      const channelId = String(channel.id);
+      const channelTitle = "title" in channel ? channel.title : target;
+      const now = new Date().toISOString();
+      const { feed, title } = await upsertFeedFromUrl(store, feedUrl, now);
+
+      await store.upsertSubscription({
+        id: stableId(feed.id, channelId),
+        feedId: feed.id,
+        chatId: channelId,
+        chatTitle: channelTitle,
+        targetType: "channel",
+        createdBy: ctx.from.id,
+        createdAt: now,
+        active: true
+      });
+
+      return ctx.reply(`Subscribed ${channelTitle || channelId} to ${title || feed.url}.`);
+    } catch (error) {
+      return ctx.reply(`Could not add channel feed: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 
@@ -91,6 +107,29 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
     return ctx.reply("Subscription removed.");
   });
 
+  bot.command("removechannel", async (ctx) => {
+    const args = commandParts(ctx.message.text);
+    if (args.length < 2) return ctx.reply("Usage: /removechannel <@channel_or_id> <feed_url_or_id>");
+
+    try {
+      const channel = await ctx.telegram.getChat(normalizeTelegramTarget(args[0]));
+      const chatId = String(channel.id);
+      const selector = args.slice(1).join(" ").trim();
+      const normalized = tryNormalizeUrl(selector);
+      const state = store.snapshot();
+      const subscription = store.activeSubscriptionsForChat(chatId).find((candidate) => {
+        const feed = state.feeds[candidate.feedId];
+        return candidate.id === selector || candidate.feedId === selector || feed?.url === normalized || feed?.url === selector;
+      });
+
+      if (!subscription) return ctx.reply("No matching active subscription found for that channel.");
+      await store.deactivateSubscription(subscription.id);
+      return ctx.reply("Channel subscription removed.");
+    } catch (error) {
+      return ctx.reply(`Could not remove channel feed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+
   bot.command("list", (ctx) => {
     const subscriptions = store.activeSubscriptionsForChat(String(ctx.chat.id));
     if (subscriptions.length === 0) return ctx.reply("This chat has no active feed subscriptions.");
@@ -101,6 +140,27 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
       return `${feed?.title || feed?.url || subscription.feedId}\nID: ${subscription.id}`;
     });
     return ctx.reply(lines.join("\n\n"));
+  });
+
+  bot.command("listchannel", async (ctx) => {
+    const target = commandArgs(ctx.message.text);
+    if (!target) return ctx.reply("Usage: /listchannel <@channel_or_id>");
+
+    try {
+      const channel = await ctx.telegram.getChat(normalizeTelegramTarget(target));
+      const subscriptions = store.activeSubscriptionsForChat(String(channel.id));
+      if (subscriptions.length === 0) return ctx.reply("That channel has no active feed subscriptions.");
+
+      const state = store.snapshot();
+      const channelTitle = "title" in channel ? channel.title : String(channel.id);
+      const lines = subscriptions.map((subscription) => {
+        const feed = state.feeds[subscription.feedId];
+        return `${feed?.title || feed?.url || subscription.feedId}\nID: ${subscription.id}`;
+      });
+      return ctx.reply([`Channel: ${channelTitle}`, "", ...lines].join("\n"));
+    } catch (error) {
+      return ctx.reply(`Could not list channel feeds: ${error instanceof Error ? error.message : String(error)}`);
+    }
   });
 
   bot.command("status", (ctx) => {
@@ -144,6 +204,43 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
 
 function commandArgs(text: string): string {
   return text.split(/\s+/).slice(1).join(" ").trim();
+}
+
+function commandParts(text: string): string[] {
+  return commandArgs(text).split(/\s+/).filter(Boolean);
+}
+
+function normalizeTelegramTarget(value: string): string {
+  const target = value.trim();
+  if (/^@[A-Za-z0-9_]{5,}$/.test(target) || /^-?\d+$/.test(target)) return target;
+  throw new Error("Channel must be a @username or numeric channel ID. The bot must be an admin in that channel.");
+}
+
+async function upsertFeedFromUrl(
+  store: JsonStore,
+  rawUrl: string,
+  now: string
+): Promise<{ feed: FeedRecord; title?: string }> {
+  const url = normalizeUrl(rawUrl);
+  const parsed = await parseFeed(url);
+  const existing = store.findFeedByUrl(url);
+  const feed: FeedRecord = existing ?? {
+    id: stableId(url),
+    url,
+    title: parsed.title,
+    siteUrl: parsed.siteUrl,
+    createdAt: now
+  };
+
+  await store.upsertFeed({
+    ...feed,
+    title: parsed.title || feed.title,
+    siteUrl: parsed.siteUrl || feed.siteUrl,
+    lastCheckedAt: now,
+    lastError: undefined
+  });
+
+  return { feed, title: parsed.title };
 }
 
 function tryNormalizeUrl(value: string): string | undefined {

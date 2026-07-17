@@ -13,6 +13,7 @@ export type Subscription = {
   feedId: string;
   chatId: string;
   chatTitle?: string;
+  targetType?: "chat" | "channel";
   createdBy: number;
   createdAt: string;
   active: boolean;
