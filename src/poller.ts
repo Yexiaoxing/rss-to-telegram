@@ -14,6 +14,8 @@ const MAX_ITEMS_PER_POLL = 5;
 export class Poller {
   private timer?: NodeJS.Timeout;
   private running = false;
+  private nextScheduledPollAt?: string;
+  private stopped = true;
 
   constructor(
     private readonly store: JsonStore,
@@ -24,18 +26,24 @@ export class Poller {
   ) {}
 
   start(): void {
+    this.stopped = false;
     this.logger?.info("poller started", { pollIntervalSeconds: this.config.pollIntervalSeconds });
-    void this.pollAll();
-    this.timer = setInterval(() => void this.pollAll(), this.config.pollIntervalSeconds * 1000);
+    this.scheduleNextPoll(0);
   }
 
   stop(): void {
-    if (this.timer) clearInterval(this.timer);
+    this.stopped = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.nextScheduledPollAt = undefined;
     this.logger?.info("poller stopped");
   }
 
   isRunning(): boolean {
     return this.running;
+  }
+
+  nextScheduledAt(): string | undefined {
+    return this.nextScheduledPollAt;
   }
 
   async pollAll(): Promise<PollResult[]> {
@@ -54,6 +62,28 @@ export class Poller {
       return results;
     } finally {
       this.running = false;
+    }
+  }
+
+  private scheduleNextPoll(delayMs: number): void {
+    if (this.stopped) return;
+    if (this.timer) clearTimeout(this.timer);
+
+    const scheduledFor = new Date(Date.now() + delayMs);
+    this.nextScheduledPollAt = scheduledFor.toISOString();
+    this.logger?.info("scheduled poll queued", { nextScheduledPollAt: this.nextScheduledPollAt, delayMs });
+
+    this.timer = setTimeout(() => void this.runScheduledPoll(), delayMs);
+  }
+
+  private async runScheduledPoll(): Promise<void> {
+    if (this.stopped) return;
+    this.nextScheduledPollAt = undefined;
+
+    await this.pollAll();
+
+    if (!this.stopped) {
+      this.scheduleNextPoll(this.config.pollIntervalSeconds * 1000);
     }
   }
 

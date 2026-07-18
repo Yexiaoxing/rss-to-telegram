@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   summarizer.logConfiguration();
   const poller = new Poller(store, bot, summarizer, config, logger.child({ component: "poller" }));
   registerManualCheckCommands(bot, store, poller, logger.child({ component: "telegram" }));
-  const app = createWebApp(store, config.pollIntervalSeconds, logger.child({ component: "web" }));
+  const app = createWebApp(store, poller, logger.child({ component: "web" }));
   const server = createServer(app);
 
   server.listen(config.webPort, config.webHost, () => {

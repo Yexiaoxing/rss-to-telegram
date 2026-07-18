@@ -3,7 +3,12 @@ import type { Logger } from "./logger.js";
 import type { JsonStore } from "./storage.js";
 import type { FeedRecord, Subscription } from "./types.js";
 
-export function createWebApp(store: JsonStore, pollIntervalSeconds: number, logger?: Logger): express.Express {
+export type SchedulerStatusProvider = {
+  nextScheduledAt(): string | undefined;
+  isRunning(): boolean;
+};
+
+export function createWebApp(store: JsonStore, scheduler: SchedulerStatusProvider, logger?: Logger): express.Express {
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => {
@@ -31,9 +36,8 @@ export function createWebApp(store: JsonStore, pollIntervalSeconds: number, logg
     const state = store.snapshot();
     const feeds = Object.values(state.feeds);
     const subscriptions = Object.values(state.subscriptions).filter((subscription) => subscription.active);
-    const feedRows = feeds.map((feed) =>
-      renderFeedRow(feed, subscriptions.filter((subscription) => subscription.feedId === feed.id), pollIntervalSeconds)
-    );
+    const nextScheduledPollAt = scheduler.nextScheduledAt();
+    const feedRows = feeds.map((feed) => renderFeedRow(feed, subscriptions.filter((subscription) => subscription.feedId === feed.id)));
 
     res.type("html").send(`<!doctype html>
 <html lang="en">
@@ -78,6 +82,7 @@ export function createWebApp(store: JsonStore, pollIntervalSeconds: number, logg
       <div class="panel"><h2>Feeds</h2><div class="metric">${feeds.length}</div></div>
       <div class="panel"><h2>Active subscriptions</h2><div class="metric">${subscriptions.length}</div></div>
       <div class="panel"><h2>Recent deliveries</h2><div class="metric">${state.deliveries.length}</div></div>
+      <div class="panel"><h2>Next scheduled poll</h2><div>${renderTimestamp(nextScheduledPollAt)}</div><div class="muted small">${scheduler.isRunning() ? "Poll running now" : "Poll queued"}</div></div>
     </section>
     <section class="panel">
       <h2>Feeds</h2>
@@ -130,7 +135,7 @@ function escape(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function renderFeedRow(feed: FeedRecord, subscriptions: Subscription[], pollIntervalSeconds: number): string {
+function renderFeedRow(feed: FeedRecord, subscriptions: Subscription[]): string {
   const status = feed.lastCheckStatus || (feed.lastError ? "failed" : feed.lastCheckedAt ? "ok" : "pending");
   const statusClass = status === "ok" ? "status-ok" : status === "failed" ? "status-failed" : "status-pending";
   const statusText = status === "ok" ? "ok" : status === "failed" ? "failed" : "pending";
@@ -139,17 +144,15 @@ function renderFeedRow(feed: FeedRecord, subscriptions: Subscription[], pollInte
   return `<tr>
     <td><div><strong>${escape(feed.title || feed.id)}</strong></div><div class="small"><code>${escape(feed.url)}</code></div></td>
     <td>${targets}</td>
-    <td>${renderCheckTiming(feed, pollIntervalSeconds)}</td>
+    <td>${renderCheckTiming(feed)}</td>
     <td>${renderCheckDetails(feed, subscriptions.length)}</td>
     <td><span class="status-pill ${statusClass}">${escape(statusText)}</span>${feed.lastError ? `<div class="error small">${escape(feed.lastError)}</div>` : ""}</td>
   </tr>`;
 }
 
-function renderCheckTiming(feed: FeedRecord, pollIntervalSeconds: number): string {
-  const nextCheckAt = nextCheckTimestamp(feed.lastCheckedAt, pollIntervalSeconds);
+function renderCheckTiming(feed: FeedRecord): string {
   return `<div class="detail-lines">
     <div>Last: ${renderTimestamp(feed.lastCheckedAt)}</div>
-    <div>Next: ${renderTimestamp(nextCheckAt)}</div>
     <div class="muted small">${escape(formatDuration(feed.lastCheckDurationMs))}</div>
   </div>`;
 }
@@ -190,11 +193,4 @@ function renderTimestamp(value?: string): string {
   if (Number.isNaN(date.getTime())) return value;
   const iso = date.toISOString();
   return `<time datetime="${escape(iso)}" data-timestamp="${escape(iso)}">${escape(iso)}</time>`;
-}
-
-function nextCheckTimestamp(lastCheckedAt: string | undefined, pollIntervalSeconds: number): string | undefined {
-  if (!lastCheckedAt) return undefined;
-  const lastCheck = new Date(lastCheckedAt);
-  if (Number.isNaN(lastCheck.getTime())) return undefined;
-  return new Date(lastCheck.getTime() + pollIntervalSeconds * 1000).toISOString();
 }
