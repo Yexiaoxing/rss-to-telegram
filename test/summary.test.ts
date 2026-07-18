@@ -3,7 +3,7 @@ import { Summarizer } from "../src/summary.js";
 
 describe("Summarizer", () => {
   it("falls back to an excerpt without OpenAI credentials", async () => {
-    const summarizer = new Summarizer(undefined, "gpt-4o-mini");
+    const summarizer = new Summarizer({ model: "gpt-4o-mini", timeoutMs: 30000, maxRetries: 2 });
     const result = await summarizer.summarize({
       key: "1",
       title: "Fallback title",

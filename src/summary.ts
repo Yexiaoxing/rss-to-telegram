@@ -3,11 +3,40 @@ import { truncate } from "./ids.js";
 import { errorData, type Logger } from "./logger.js";
 import type { FeedItem, SummaryResult } from "./types.js";
 
+export type SummarizerOptions = {
+  apiKey?: string;
+  model: string;
+  baseURL?: string;
+  timeoutMs: number;
+  maxRetries: number;
+};
+
 export class Summarizer {
   private readonly client?: OpenAI;
+  private readonly model: string;
+  private readonly baseURL?: string;
 
-  constructor(apiKey: string | undefined, private readonly model: string, baseURL?: string, private readonly logger?: Logger) {
-    this.client = apiKey ? new OpenAI({ apiKey, baseURL }) : undefined;
+  constructor(private readonly options: SummarizerOptions, private readonly logger?: Logger) {
+    this.model = options.model;
+    this.baseURL = options.baseURL;
+    this.client = options.apiKey
+      ? new OpenAI({
+          apiKey: options.apiKey,
+          baseURL: options.baseURL,
+          timeout: options.timeoutMs,
+          maxRetries: options.maxRetries
+        })
+      : undefined;
+  }
+
+  logConfiguration(): void {
+    this.logger?.info("openai summary configuration", {
+      enabled: Boolean(this.client),
+      model: this.model,
+      baseURL: publicBaseURL(this.baseURL),
+      timeoutMs: this.options.timeoutMs,
+      maxRetries: this.options.maxRetries
+    });
   }
 
   async summarize(item: FeedItem, articleText?: string): Promise<SummaryResult> {
@@ -24,7 +53,12 @@ export class Summarizer {
     }
 
     try {
-      this.logger?.info("openai summary request started", { model: this.model, itemKey: item.key, textLength });
+      this.logger?.info("openai summary request started", {
+        model: this.model,
+        baseURL: publicBaseURL(this.baseURL),
+        itemKey: item.key,
+        textLength
+      });
       const response = await this.client.chat.completions.create({
         model: this.model,
         temperature: 0.2,
@@ -63,6 +97,7 @@ export class Summarizer {
       }
       this.logger?.info("openai summary request finished", {
         model: this.model,
+        baseURL: publicBaseURL(this.baseURL),
         itemKey: item.key,
         durationMs: Date.now() - startedAt
       });
@@ -72,11 +107,12 @@ export class Summarizer {
         source: "openai"
       };
     } catch (error) {
-      this.logger?.error("openai summary request failed", {
+      this.logger?.warn("openai summary request failed; falling back to excerpt", {
         model: this.model,
+        baseURL: publicBaseURL(this.baseURL),
         itemKey: item.key,
         durationMs: Date.now() - startedAt,
-        ...errorData(error)
+        ...openAIErrorData(error)
       });
       return this.excerptSummary(item, sourceText);
     }
@@ -90,4 +126,23 @@ export class Summarizer {
       source: "excerpt"
     };
   }
+}
+
+function openAIErrorData(error: unknown): Record<string, unknown> {
+  const data = errorData(error, { includeStack: false });
+  const cause = typeof error === "object" && error && "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+
+  if (cause instanceof Error) {
+    return {
+      ...data,
+      cause: cause.message,
+      causeName: cause.name
+    };
+  }
+  if (cause) return { ...data, cause: String(cause) };
+  return data;
+}
+
+function publicBaseURL(value: string | undefined): string {
+  return value || "https://api.openai.com/v1";
 }

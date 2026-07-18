@@ -16,11 +16,16 @@ async function main(): Promise<void> {
 
   const bot = createBot(config, store, logger.child({ component: "telegram" }));
   const summarizer = new Summarizer(
-    config.openaiApiKey,
-    config.openaiModel,
-    config.openaiBaseUrl,
+    {
+      apiKey: config.openaiApiKey,
+      model: config.openaiModel,
+      baseURL: config.openaiBaseUrl,
+      timeoutMs: config.openaiTimeoutMs,
+      maxRetries: config.openaiMaxRetries
+    },
     logger.child({ component: "openai" })
   );
+  summarizer.logConfiguration();
   const poller = new Poller(store, bot, summarizer, config, logger.child({ component: "poller" }));
   registerManualCheckCommands(bot, store, poller, logger.child({ component: "telegram" }));
   const app = createWebApp(store, config.pollIntervalSeconds, logger.child({ component: "web" }));

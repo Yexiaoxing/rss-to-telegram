@@ -23,4 +23,16 @@ describe("loadConfig", () => {
 
     expect(loadConfig().logLevel).toBe("debug");
   });
+
+  it("loads OpenAI timeout and retry settings", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "token";
+    process.env.TELEGRAM_ADMIN_IDS = "123";
+    process.env.OPENAI_TIMEOUT_MS = "15000";
+    process.env.OPENAI_MAX_RETRIES = "1";
+
+    const config = loadConfig();
+
+    expect(config.openaiTimeoutMs).toBe(15000);
+    expect(config.openaiMaxRetries).toBe(1);
+  });
 });

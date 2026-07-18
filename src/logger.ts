@@ -59,12 +59,11 @@ export function parseLogLevel(value: string | undefined): LogLevel {
   return "info";
 }
 
-export function errorData(error: unknown): Record<string, unknown> {
+export function errorData(error: unknown, options: { includeStack?: boolean } = { includeStack: true }): Record<string, unknown> {
   if (error instanceof Error) {
-    return {
-      error: error.message,
-      stack: error.stack
-    };
+    const data: Record<string, unknown> = { error: error.message, errorName: error.name };
+    if (options.includeStack !== false) data.stack = error.stack;
+    return data;
   }
   return { error: String(error) };
 }
