@@ -30,25 +30,35 @@ async function main(): Promise<void> {
   registerManualCheckCommands(bot, store, poller, logger.child({ component: "telegram" }));
   const app = createWebApp(store, poller, logger.child({ component: "web" }));
   const server = createServer(app);
+  let botRunning = false;
 
   server.listen(config.webPort, config.webHost, () => {
     logger.info("dashboard listening", { url: `http://${config.webHost}:${config.webPort}` });
   });
 
-  await registerBotCommands(bot);
-  await bot.launch();
   poller.start();
-  logger.info("telegram bot launched", { pollIntervalSeconds: config.pollIntervalSeconds });
+  void startTelegramBot();
 
   const shutdown = async (signal: string) => {
     logger.info("shutdown requested", { signal });
     poller.stop();
-    bot.stop(signal);
+    if (botRunning) bot.stop(signal);
     server.close(() => process.exit(0));
   };
 
   process.once("SIGINT", () => void shutdown("SIGINT"));
   process.once("SIGTERM", () => void shutdown("SIGTERM"));
+
+  async function startTelegramBot(): Promise<void> {
+    try {
+      await registerBotCommands(bot);
+      await bot.launch();
+      botRunning = true;
+      logger.info("telegram bot launched", { pollIntervalSeconds: config.pollIntervalSeconds });
+    } catch (error) {
+      logger.error("telegram bot launch failed", errorData(error));
+    }
+  }
 }
 
 main().catch((error) => {
