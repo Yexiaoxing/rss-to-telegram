@@ -52,12 +52,16 @@ The dashboard is available on the host at `http://127.0.0.1:3000`. Keep it behin
 
 ## Telegram Commands
 
+The service registers its command menu with Telegram during startup.
+
 - `/add <feed_url>` subscribes the current chat to a feed.
 - `/addchannel <@channel_or_id> <feed_url>` subscribes a Telegram channel to a feed.
 - `/remove <feed_url_or_id>` removes a subscription from the current chat.
 - `/removechannel <@channel_or_id> <feed_url_or_id>` removes a feed subscription from a channel.
 - `/list` shows active subscriptions in the current chat.
 - `/listchannel <@channel_or_id>` shows active subscriptions for a channel.
+- `/check` immediately checks feeds subscribed to the current chat.
+- `/checkchannel <@channel_or_id>` immediately checks feeds subscribed to a channel.
 - `/status` shows delivery and feed health.
 - `/preview <feed_url>` previews the latest item without subscribing.
 

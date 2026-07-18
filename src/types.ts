@@ -12,6 +12,7 @@ export type FeedRecord = {
   lastCheckSent?: number;
   lastCheckFailed?: number;
   lastCheckSkipped?: number;
+  lastCheckTargetCount?: number;
 };
 
 export type Subscription = {

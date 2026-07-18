@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createBot } from "./bot.js";
+import { createBot, registerBotCommands, registerManualCheckCommands } from "./bot.js";
 import { loadConfig } from "./config.js";
 import { Poller } from "./poller.js";
 import { JsonStore } from "./storage.js";
@@ -14,6 +14,7 @@ async function main(): Promise<void> {
   const bot = createBot(config, store);
   const summarizer = new Summarizer(config.openaiApiKey, config.openaiModel, config.openaiBaseUrl);
   const poller = new Poller(store, bot, summarizer, config);
+  registerManualCheckCommands(bot, store, poller);
   const app = createWebApp(store);
   const server = createServer(app);
 
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
     console.log(`Dashboard listening on http://${config.webHost}:${config.webPort}`);
   });
 
+  await registerBotCommands(bot);
   await bot.launch();
   poller.start();
   console.log(`Telegram bot launched. Polling every ${config.pollIntervalSeconds}s.`);

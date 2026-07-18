@@ -30,37 +30,65 @@ export class Poller {
     if (this.timer) clearInterval(this.timer);
   }
 
+  isRunning(): boolean {
+    return this.running;
+  }
+
   async pollAll(): Promise<PollResult[]> {
     if (this.running) return [];
     this.running = true;
 
     try {
       const state = this.store.snapshot();
-      const activeFeedIds = new Set(
-        Object.values(state.subscriptions)
-          .filter((subscription) => subscription.active)
-          .map((subscription) => subscription.feedId)
-      );
+      const subscriptions = Object.values(state.subscriptions).filter((subscription) => subscription.active);
+      return await this.pollSubscriptionSet(subscriptions);
+    } finally {
+      this.running = false;
+    }
+  }
 
-      const results: PollResult[] = [];
-      for (const feedId of activeFeedIds) {
-        const feed = state.feeds[feedId];
-        if (feed) results.push(await this.pollFeed(feed));
-      }
-      return results;
+  async pollSubscriptions(subscriptions: Subscription[]): Promise<PollResult[]> {
+    if (this.running) return [];
+    this.running = true;
+
+    try {
+      return await this.pollSubscriptionSet(subscriptions.filter((subscription) => subscription.active));
     } finally {
       this.running = false;
     }
   }
 
   async pollFeed(feed: FeedRecord): Promise<PollResult> {
+    return await this.pollFeedForSubscriptions(feed, this.store.activeSubscriptionsForFeed(feed.id));
+  }
+
+  private async pollSubscriptionSet(subscriptions: Subscription[]): Promise<PollResult[]> {
+    const state = this.store.snapshot();
+    const subscriptionsByFeed = new Map<string, Subscription[]>();
+
+    for (const subscription of subscriptions) {
+      const group = subscriptionsByFeed.get(subscription.feedId) ?? [];
+      group.push(subscription);
+      subscriptionsByFeed.set(subscription.feedId, group);
+    }
+
+    const results: PollResult[] = [];
+    for (const [feedId, feedSubscriptions] of subscriptionsByFeed) {
+      const feed = state.feeds[feedId];
+      if (feed) results.push(await this.pollFeedForSubscriptions(feed, feedSubscriptions));
+    }
+
+    return results;
+  }
+
+  private async pollFeedForSubscriptions(feed: FeedRecord, subscriptions: Subscription[]): Promise<PollResult> {
     const startedAt = Date.now();
     const result: PollResult = { feedId: feed.id, sent: 0, failed: 0, skipped: 0 };
 
     try {
       const parsed = await parseFeed(feed.url);
       const items = parsed.items.slice(0, MAX_ITEMS_PER_POLL).reverse();
-      for (const subscription of this.store.activeSubscriptionsForFeed(feed.id)) {
+      for (const subscription of subscriptions) {
         for (const item of items) {
           if (this.store.hasSeen(subscription.id, item.key)) {
             result.skipped += 1;
@@ -80,7 +108,8 @@ export class Poller {
         lastCheckItemCount: parsed.items.length,
         lastCheckSent: result.sent,
         lastCheckFailed: result.failed,
-        lastCheckSkipped: result.skipped
+        lastCheckSkipped: result.skipped,
+        lastCheckTargetCount: subscriptions.length
       });
     } catch (error) {
       result.failed += 1;
@@ -92,7 +121,8 @@ export class Poller {
         lastCheckItemCount: 0,
         lastCheckSent: result.sent,
         lastCheckFailed: result.failed,
-        lastCheckSkipped: result.skipped
+        lastCheckSkipped: result.skipped,
+        lastCheckTargetCount: subscriptions.length
       });
     }
 

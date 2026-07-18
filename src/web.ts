@@ -123,7 +123,8 @@ function renderCheckDetails(feed: FeedRecord, activeTargetCount: number): string
 
   return `<div class="detail-lines">
     <div>Feed items: ${escape(itemCount)}</div>
-    <div>Targets: ${activeTargetCount}</div>
+    <div>Checked targets: ${escape(formatMetric(feed.lastCheckTargetCount))}</div>
+    <div>Active targets: ${activeTargetCount}</div>
     <div>Sent: ${escape(sent)} | Skipped: ${escape(skipped)} | Failed: ${escape(failed)}</div>
   </div>`;
 }
