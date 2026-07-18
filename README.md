@@ -34,6 +34,9 @@ Optional:
 - `WEB_HOST`: defaults to `127.0.0.1` locally. Compose sets the container to `0.0.0.0` but publishes only to host localhost.
 - `WEB_PORT`: defaults to `3000`.
 - `DATA_FILE`: defaults to `./data/rss-to-telegram.json` locally and `/app/data/rss-to-telegram.json` in Compose.
+- `LOG_LEVEL`: structured JSON log level, one of `debug`, `info`, `warn`, or `error`. Defaults to `info`.
+
+Logs are written to stdout/stderr as JSON objects so Docker Compose and common log collectors can parse them. Use `LOG_LEVEL=debug` when diagnosing feed parsing or Telegram delivery behavior.
 
 ## Run Locally
 

@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createBot, registerBotCommands, registerManualCheckCommands } from "./bot.js";
 import { loadConfig } from "./config.js";
+import { errorData, Logger, parseLogLevel } from "./logger.js";
 import { Poller } from "./poller.js";
 import { JsonStore } from "./storage.js";
 import { Summarizer } from "./summary.js";
@@ -8,27 +9,29 @@ import { createWebApp } from "./web.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const logger = new Logger(config.logLevel);
   const store = new JsonStore(config.dataFile);
   await store.load();
+  logger.info("state loaded", { dataFile: config.dataFile });
 
-  const bot = createBot(config, store);
+  const bot = createBot(config, store, logger.child({ component: "telegram" }));
   const summarizer = new Summarizer(config.openaiApiKey, config.openaiModel, config.openaiBaseUrl);
-  const poller = new Poller(store, bot, summarizer, config);
-  registerManualCheckCommands(bot, store, poller);
-  const app = createWebApp(store);
+  const poller = new Poller(store, bot, summarizer, config, logger.child({ component: "poller" }));
+  registerManualCheckCommands(bot, store, poller, logger.child({ component: "telegram" }));
+  const app = createWebApp(store, config.pollIntervalSeconds, logger.child({ component: "web" }));
   const server = createServer(app);
 
   server.listen(config.webPort, config.webHost, () => {
-    console.log(`Dashboard listening on http://${config.webHost}:${config.webPort}`);
+    logger.info("dashboard listening", { url: `http://${config.webHost}:${config.webPort}` });
   });
 
   await registerBotCommands(bot);
   await bot.launch();
   poller.start();
-  console.log(`Telegram bot launched. Polling every ${config.pollIntervalSeconds}s.`);
+  logger.info("telegram bot launched", { pollIntervalSeconds: config.pollIntervalSeconds });
 
   const shutdown = async (signal: string) => {
-    console.log(`Received ${signal}; shutting down.`);
+    logger.info("shutdown requested", { signal });
     poller.stop();
     bot.stop(signal);
     server.close(() => process.exit(0));
@@ -39,6 +42,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(error);
+  const logger = new Logger(parseLogLevel(process.env.LOG_LEVEL?.trim()));
+  logger.error("fatal startup error", errorData(error));
   process.exit(1);
 });

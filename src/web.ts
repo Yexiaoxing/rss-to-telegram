@@ -1,10 +1,23 @@
 import express from "express";
+import type { Logger } from "./logger.js";
 import type { JsonStore } from "./storage.js";
 import type { FeedRecord, Subscription } from "./types.js";
 
-export function createWebApp(store: JsonStore): express.Express {
+export function createWebApp(store: JsonStore, pollIntervalSeconds: number, logger?: Logger): express.Express {
   const app = express();
   app.use(express.json());
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    res.on("finish", () => {
+      logger?.info("http request", {
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        durationMs: Date.now() - startedAt
+      });
+    });
+    next();
+  });
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -18,7 +31,9 @@ export function createWebApp(store: JsonStore): express.Express {
     const state = store.snapshot();
     const feeds = Object.values(state.feeds);
     const subscriptions = Object.values(state.subscriptions).filter((subscription) => subscription.active);
-    const feedRows = feeds.map((feed) => renderFeedRow(feed, subscriptions.filter((subscription) => subscription.feedId === feed.id)));
+    const feedRows = feeds.map((feed) =>
+      renderFeedRow(feed, subscriptions.filter((subscription) => subscription.feedId === feed.id), pollIntervalSeconds)
+    );
 
     res.type("html").send(`<!doctype html>
 <html lang="en">
@@ -67,7 +82,7 @@ export function createWebApp(store: JsonStore): express.Express {
     <section class="panel">
       <h2>Feeds</h2>
       <table>
-        <thead><tr><th>Feed</th><th>Active targets</th><th>Last check</th><th>Check details</th><th>Status</th></tr></thead>
+        <thead><tr><th>Feed</th><th>Active targets</th><th>Check timing</th><th>Check details</th><th>Status</th></tr></thead>
         <tbody>${feedRows.join("") || "<tr><td colspan=\"5\">No feeds yet. Use /add in Telegram.</td></tr>"}</tbody>
       </table>
     </section>
@@ -75,10 +90,31 @@ export function createWebApp(store: JsonStore): express.Express {
       <h2>Recent deliveries</h2>
       <table>
         <thead><tr><th>Time</th><th>Title</th><th>Chat</th><th>Status</th></tr></thead>
-        <tbody>${state.deliveries.slice(0, 25).map((delivery) => `<tr><td>${escape(delivery.deliveredAt)}</td><td>${escape(delivery.title)}</td><td><code>${escape(delivery.chatId)}</code></td><td class="${delivery.status === "failed" ? "error" : ""}">${escape(delivery.error || delivery.status)}</td></tr>`).join("") || "<tr><td colspan=\"4\">No deliveries yet.</td></tr>"}</tbody>
+        <tbody>${state.deliveries.slice(0, 25).map((delivery) => `<tr><td>${renderTimestamp(delivery.deliveredAt)}</td><td>${escape(delivery.title)}</td><td><code>${escape(delivery.chatId)}</code></td><td class="${delivery.status === "failed" ? "error" : ""}">${escape(delivery.error || delivery.status)}</td></tr>`).join("") || "<tr><td colspan=\"4\">No deliveries yet.</td></tr>"}</tbody>
       </table>
     </section>
   </main>
+  <script>
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZoneName: "short"
+    });
+
+    document.querySelectorAll("time[data-timestamp]").forEach((element) => {
+      const timestamp = element.getAttribute("data-timestamp");
+      if (!timestamp) return;
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) return;
+      element.textContent = formatter.format(date);
+      element.setAttribute("title", timestamp);
+    });
+  </script>
 </body>
 </html>`);
   });
@@ -94,7 +130,7 @@ function escape(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function renderFeedRow(feed: FeedRecord, subscriptions: Subscription[]): string {
+function renderFeedRow(feed: FeedRecord, subscriptions: Subscription[], pollIntervalSeconds: number): string {
   const status = feed.lastCheckStatus || (feed.lastError ? "failed" : feed.lastCheckedAt ? "ok" : "pending");
   const statusClass = status === "ok" ? "status-ok" : status === "failed" ? "status-failed" : "status-pending";
   const statusText = status === "ok" ? "ok" : status === "failed" ? "failed" : "pending";
@@ -103,10 +139,19 @@ function renderFeedRow(feed: FeedRecord, subscriptions: Subscription[]): string 
   return `<tr>
     <td><div><strong>${escape(feed.title || feed.id)}</strong></div><div class="small"><code>${escape(feed.url)}</code></div></td>
     <td>${targets}</td>
-    <td>${escape(formatDateTime(feed.lastCheckedAt))}<div class="muted small">${escape(formatDuration(feed.lastCheckDurationMs))}</div></td>
+    <td>${renderCheckTiming(feed, pollIntervalSeconds)}</td>
     <td>${renderCheckDetails(feed, subscriptions.length)}</td>
     <td><span class="status-pill ${statusClass}">${escape(statusText)}</span>${feed.lastError ? `<div class="error small">${escape(feed.lastError)}</div>` : ""}</td>
   </tr>`;
+}
+
+function renderCheckTiming(feed: FeedRecord, pollIntervalSeconds: number): string {
+  const nextCheckAt = nextCheckTimestamp(feed.lastCheckedAt, pollIntervalSeconds);
+  return `<div class="detail-lines">
+    <div>Last: ${renderTimestamp(feed.lastCheckedAt)}</div>
+    <div>Next: ${renderTimestamp(nextCheckAt)}</div>
+    <div class="muted small">${escape(formatDuration(feed.lastCheckDurationMs))}</div>
+  </div>`;
 }
 
 function renderTarget(subscription: Subscription): string {
@@ -139,9 +184,17 @@ function formatDuration(value?: number): string {
   return `Duration: ${(value / 1000).toFixed(1)} s`;
 }
 
-function formatDateTime(value?: string): string {
+function renderTimestamp(value?: string): string {
   if (!value) return "never";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toISOString().replace("T", " ").slice(0, 19);
+  const iso = date.toISOString();
+  return `<time datetime="${escape(iso)}" data-timestamp="${escape(iso)}">${escape(iso)}</time>`;
+}
+
+function nextCheckTimestamp(lastCheckedAt: string | undefined, pollIntervalSeconds: number): string | undefined {
+  if (!lastCheckedAt) return undefined;
+  const lastCheck = new Date(lastCheckedAt);
+  if (Number.isNaN(lastCheck.getTime())) return undefined;
+  return new Date(lastCheck.getTime() + pollIntervalSeconds * 1000).toISOString();
 }

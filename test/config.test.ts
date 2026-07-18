@@ -15,4 +15,12 @@ describe("loadConfig", () => {
 
     expect(loadConfig().openaiBaseUrl).toBe("https://openai-compatible.example.com/v1");
   });
+
+  it("loads a configured log level", () => {
+    process.env.TELEGRAM_BOT_TOKEN = "token";
+    process.env.TELEGRAM_ADMIN_IDS = "123";
+    process.env.LOG_LEVEL = "debug";
+
+    expect(loadConfig().logLevel).toBe("debug");
+  });
 });

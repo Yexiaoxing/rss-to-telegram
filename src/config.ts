@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { parseLogLevel, type LogLevel } from "./logger.js";
 
 export type AppConfig = {
   telegramBotToken: string;
@@ -10,6 +11,7 @@ export type AppConfig = {
   pollIntervalSeconds: number;
   webHost: string;
   webPort: number;
+  logLevel: LogLevel;
 };
 
 function requireEnv(name: string): string {
@@ -49,6 +51,7 @@ export function loadConfig(): AppConfig {
     dataFile: process.env.DATA_FILE?.trim() || "./data/rss-to-telegram.json",
     pollIntervalSeconds: numberEnv("POLL_INTERVAL_SECONDS", 300),
     webHost: process.env.WEB_HOST?.trim() || "127.0.0.1",
-    webPort: numberEnv("WEB_PORT", 3000)
+    webPort: numberEnv("WEB_PORT", 3000),
+    logLevel: parseLogLevel(process.env.LOG_LEVEL?.trim())
   };
 }

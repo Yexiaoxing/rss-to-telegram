@@ -3,6 +3,7 @@ import { extractArticle } from "./article.js";
 import type { AppConfig } from "./config.js";
 import { parseFeed } from "./feed.js";
 import { stableId } from "./ids.js";
+import { errorData, type Logger } from "./logger.js";
 import { formatTelegramMessage } from "./message.js";
 import { JsonStore } from "./storage.js";
 import { Summarizer } from "./summary.js";
@@ -18,16 +19,19 @@ export class Poller {
     private readonly store: JsonStore,
     private readonly bot: Telegraf,
     private readonly summarizer: Summarizer,
-    private readonly config: AppConfig
+    private readonly config: AppConfig,
+    private readonly logger?: Logger
   ) {}
 
   start(): void {
+    this.logger?.info("poller started", { pollIntervalSeconds: this.config.pollIntervalSeconds });
     void this.pollAll();
     this.timer = setInterval(() => void this.pollAll(), this.config.pollIntervalSeconds * 1000);
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
+    this.logger?.info("poller stopped");
   }
 
   isRunning(): boolean {
@@ -35,24 +39,37 @@ export class Poller {
   }
 
   async pollAll(): Promise<PollResult[]> {
-    if (this.running) return [];
+    if (this.running) {
+      this.logger?.warn("scheduled poll skipped because another poll is running");
+      return [];
+    }
     this.running = true;
 
     try {
+      this.logger?.info("scheduled poll started");
       const state = this.store.snapshot();
       const subscriptions = Object.values(state.subscriptions).filter((subscription) => subscription.active);
-      return await this.pollSubscriptionSet(subscriptions);
+      const results = await this.pollSubscriptionSet(subscriptions);
+      this.logger?.info("scheduled poll finished", pollTotals(results));
+      return results;
     } finally {
       this.running = false;
     }
   }
 
   async pollSubscriptions(subscriptions: Subscription[]): Promise<PollResult[]> {
-    if (this.running) return [];
+    if (this.running) {
+      this.logger?.warn("manual poll skipped because another poll is running");
+      return [];
+    }
     this.running = true;
 
     try {
-      return await this.pollSubscriptionSet(subscriptions.filter((subscription) => subscription.active));
+      const activeSubscriptions = subscriptions.filter((subscription) => subscription.active);
+      this.logger?.info("manual poll started", { subscriptions: activeSubscriptions.length });
+      const results = await this.pollSubscriptionSet(activeSubscriptions);
+      this.logger?.info("manual poll finished", pollTotals(results));
+      return results;
     } finally {
       this.running = false;
     }
@@ -86,6 +103,7 @@ export class Poller {
     const result: PollResult = { feedId: feed.id, sent: 0, failed: 0, skipped: 0 };
 
     try {
+      this.logger?.debug("feed poll started", { feedId: feed.id, feedUrl: feed.url, subscriptions: subscriptions.length });
       const parsed = await parseFeed(feed.url);
       const items = parsed.items.slice(0, MAX_ITEMS_PER_POLL).reverse();
       for (const subscription of subscriptions) {
@@ -111,8 +129,19 @@ export class Poller {
         lastCheckSkipped: result.skipped,
         lastCheckTargetCount: subscriptions.length
       });
+      this.logger?.info("feed poll finished", {
+        feedId: feed.id,
+        feedUrl: feed.url,
+        durationMs: Date.now() - startedAt,
+        itemCount: parsed.items.length,
+        subscriptions: subscriptions.length,
+        sent: result.sent,
+        skipped: result.skipped,
+        failed: result.failed
+      });
     } catch (error) {
       result.failed += 1;
+      this.logger?.error("feed poll failed", { feedId: feed.id, feedUrl: feed.url, ...errorData(error) });
       await this.store.updateFeed(feed.id, {
         lastCheckedAt: new Date().toISOString(),
         lastError: error instanceof Error ? error.message : String(error),
@@ -163,7 +192,20 @@ export class Poller {
         status: "sent"
       });
       result.sent += 1;
+      this.logger?.debug("feed item delivered", {
+        feedId: feed.id,
+        subscriptionId: subscription.id,
+        chatId: subscription.chatId,
+        itemKey: item.key
+      });
     } catch (error) {
+      this.logger?.error("feed item delivery failed", {
+        feedId: feed.id,
+        subscriptionId: subscription.id,
+        chatId: subscription.chatId,
+        itemKey: item.key,
+        ...errorData(error)
+      });
       await this.store.addDelivery({
         id: stableId(subscription.id, item.key, Date.now()),
         feedId: feed.id,
@@ -179,4 +221,16 @@ export class Poller {
       result.failed += 1;
     }
   }
+}
+
+function pollTotals(results: PollResult[]): { feeds: number; sent: number; skipped: number; failed: number } {
+  const totals = results.reduce(
+    (acc, result) => ({
+      sent: acc.sent + result.sent,
+      skipped: acc.skipped + result.skipped,
+      failed: acc.failed + result.failed
+    }),
+    { sent: 0, skipped: 0, failed: 0 }
+  );
+  return { feeds: results.length, ...totals };
 }

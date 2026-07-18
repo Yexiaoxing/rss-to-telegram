@@ -2,6 +2,7 @@ import { Telegraf } from "telegraf";
 import type { AppConfig } from "./config.js";
 import { parseFeed } from "./feed.js";
 import { normalizeUrl, stableId, truncate } from "./ids.js";
+import { errorData, type Logger } from "./logger.js";
 import type { Poller } from "./poller.js";
 import { JsonStore } from "./storage.js";
 import type { FeedRecord, PollResult, Subscription } from "./types.js";
@@ -23,7 +24,7 @@ export async function registerBotCommands(bot: Telegraf): Promise<void> {
   await bot.telegram.setMyCommands([...botCommands]);
 }
 
-export function createBot(config: AppConfig, store: JsonStore): Telegraf {
+export function createBot(config: AppConfig, store: JsonStore, logger?: Logger): Telegraf {
   const bot = new Telegraf(config.telegramBotToken);
 
   bot.use(async (ctx, next) => {
@@ -65,6 +66,7 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
         active: true
       };
       await store.upsertSubscription(subscription);
+      logger?.info("chat subscribed to feed", { chatId: subscription.chatId, feedId: feed.id, feedUrl: feed.url });
 
       return ctx.reply(`Subscribed this chat to ${title || feed.url}.`);
     } catch (error) {
@@ -95,6 +97,7 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
         createdAt: now,
         active: true
       });
+      logger?.info("channel subscribed to feed", { chatId: channelId, feedId: feed.id, feedUrl: feed.url });
 
       return ctx.reply(`Subscribed ${channelTitle || channelId} to ${title || feed.url}.`);
     } catch (error) {
@@ -115,6 +118,7 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
 
     if (!subscription) return ctx.reply("No matching active subscription found for this chat.");
     await store.deactivateSubscription(subscription.id);
+    logger?.info("chat subscription removed", { chatId, subscriptionId: subscription.id, feedId: subscription.feedId });
     return ctx.reply("Subscription removed.");
   });
 
@@ -135,6 +139,7 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
 
       if (!subscription) return ctx.reply("No matching active subscription found for that channel.");
       await store.deactivateSubscription(subscription.id);
+      logger?.info("channel subscription removed", { chatId, subscriptionId: subscription.id, feedId: subscription.feedId });
       return ctx.reply("Channel subscription removed.");
     } catch (error) {
       return ctx.reply(`Could not remove channel feed: ${error instanceof Error ? error.message : String(error)}`);
@@ -207,20 +212,22 @@ export function createBot(config: AppConfig, store: JsonStore): Telegraf {
   });
 
   bot.catch((error) => {
-    console.error("Telegram bot error", error);
+    logger?.error("telegram bot error", errorData(error));
   });
 
   return bot;
 }
 
-export function registerManualCheckCommands(bot: Telegraf, store: JsonStore, poller: Poller): void {
+export function registerManualCheckCommands(bot: Telegraf, store: JsonStore, poller: Poller, logger?: Logger): void {
   bot.command("check", async (ctx) => {
     const subscriptions = store.activeSubscriptionsForChat(String(ctx.chat.id));
     if (subscriptions.length === 0) return ctx.reply("This chat has no active feed subscriptions.");
     if (poller.isRunning()) return ctx.reply("A feed check is already running. Try again after it finishes.");
 
     await ctx.reply(`Checking ${subscriptions.length} active subscription${subscriptions.length === 1 ? "" : "s"} for this chat...`);
+    logger?.info("manual chat check started", { chatId: String(ctx.chat.id), subscriptions: subscriptions.length });
     const results = await poller.pollSubscriptions(subscriptions);
+    logger?.info("manual chat check finished", { chatId: String(ctx.chat.id), ...pollTotals(results) });
     return ctx.reply(formatPollResults(results));
   });
 
@@ -236,7 +243,9 @@ export function registerManualCheckCommands(bot: Telegraf, store: JsonStore, pol
 
       const channelTitle = "title" in channel ? channel.title : String(channel.id);
       await ctx.reply(`Checking ${subscriptions.length} active subscription${subscriptions.length === 1 ? "" : "s"} for ${channelTitle}...`);
+      logger?.info("manual channel check started", { chatId: String(channel.id), subscriptions: subscriptions.length });
       const results = await poller.pollSubscriptions(subscriptions);
+      logger?.info("manual channel check finished", { chatId: String(channel.id), ...pollTotals(results) });
       return ctx.reply(formatPollResults(results));
     } catch (error) {
       return ctx.reply(`Could not check channel feeds: ${error instanceof Error ? error.message : String(error)}`);
@@ -251,6 +260,17 @@ function commandArgs(text: string): string {
 function formatPollResults(results: PollResult[]): string {
   if (results.length === 0) return "No check was started.";
 
+  const totals = pollTotals(results);
+
+  return [
+    `Checked feeds: ${results.length}`,
+    `Sent: ${totals.sent}`,
+    `Skipped: ${totals.skipped}`,
+    `Failed: ${totals.failed}`
+  ].join("\n");
+}
+
+function pollTotals(results: PollResult[]): { feeds: number; sent: number; skipped: number; failed: number } {
   const totals = results.reduce(
     (acc, result) => ({
       sent: acc.sent + result.sent,
@@ -259,13 +279,7 @@ function formatPollResults(results: PollResult[]): string {
     }),
     { sent: 0, skipped: 0, failed: 0 }
   );
-
-  return [
-    `Checked feeds: ${results.length}`,
-    `Sent: ${totals.sent}`,
-    `Skipped: ${totals.skipped}`,
-    `Failed: ${totals.failed}`
-  ].join("\n");
+  return { feeds: results.length, ...totals };
 }
 
 function commandParts(text: string): string[] {
