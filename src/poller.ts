@@ -80,10 +80,14 @@ export class Poller {
     if (this.stopped) return;
     this.nextScheduledPollAt = undefined;
 
-    await this.pollAll();
-
-    if (!this.stopped) {
-      this.scheduleNextPoll(this.config.pollIntervalSeconds * 1000);
+    try {
+      await this.pollAll();
+    } catch (error) {
+      this.logger?.error("scheduled poll runner failed", errorData(error));
+    } finally {
+      if (!this.stopped) {
+        this.scheduleNextPoll(this.config.pollIntervalSeconds * 1000);
+      }
     }
   }
 

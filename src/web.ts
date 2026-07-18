@@ -37,6 +37,7 @@ export function createWebApp(store: JsonStore, scheduler: SchedulerStatusProvide
     const feeds = Object.values(state.feeds);
     const subscriptions = Object.values(state.subscriptions).filter((subscription) => subscription.active);
     const nextScheduledPollAt = scheduler.nextScheduledAt();
+    const schedulerLabel = scheduler.isRunning() ? "Poll running now" : nextScheduledPollAt ? "Poll queued" : "No poll queued";
     const feedRows = feeds.map((feed) => renderFeedRow(feed, subscriptions.filter((subscription) => subscription.feedId === feed.id)));
 
     res.type("html").send(`<!doctype html>
@@ -82,7 +83,7 @@ export function createWebApp(store: JsonStore, scheduler: SchedulerStatusProvide
       <div class="panel"><h2>Feeds</h2><div class="metric">${feeds.length}</div></div>
       <div class="panel"><h2>Active subscriptions</h2><div class="metric">${subscriptions.length}</div></div>
       <div class="panel"><h2>Recent deliveries</h2><div class="metric">${state.deliveries.length}</div></div>
-      <div class="panel"><h2>Next scheduled poll</h2><div>${renderTimestamp(nextScheduledPollAt)}</div><div class="muted small">${scheduler.isRunning() ? "Poll running now" : "Poll queued"}</div></div>
+      <div class="panel"><h2>Next scheduled poll</h2><div>${renderSchedulerTime(nextScheduledPollAt, scheduler.isRunning())}</div><div class="muted small">${escape(schedulerLabel)}</div></div>
     </section>
     <section class="panel">
       <h2>Feeds</h2>
@@ -193,4 +194,9 @@ function renderTimestamp(value?: string): string {
   if (Number.isNaN(date.getTime())) return value;
   const iso = date.toISOString();
   return `<time datetime="${escape(iso)}" data-timestamp="${escape(iso)}">${escape(iso)}</time>`;
+}
+
+function renderSchedulerTime(value: string | undefined, running: boolean): string {
+  if (value) return renderTimestamp(value);
+  return running ? "running now" : "not scheduled";
 }
