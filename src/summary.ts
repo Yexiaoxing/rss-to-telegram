@@ -1,19 +1,30 @@
 import OpenAI from "openai";
 import { truncate } from "./ids.js";
+import { errorData, type Logger } from "./logger.js";
 import type { FeedItem, SummaryResult } from "./types.js";
 
 export class Summarizer {
   private readonly client?: OpenAI;
 
-  constructor(apiKey: string | undefined, private readonly model: string, baseURL?: string) {
+  constructor(apiKey: string | undefined, private readonly model: string, baseURL?: string, private readonly logger?: Logger) {
     this.client = apiKey ? new OpenAI({ apiKey, baseURL }) : undefined;
   }
 
   async summarize(item: FeedItem, articleText?: string): Promise<SummaryResult> {
+    const startedAt = Date.now();
     const sourceText = articleText || item.contentText || item.title;
-    if (!this.client || !sourceText.trim()) return this.excerptSummary(item, sourceText);
+    const textLength = sourceText.trim().length;
+    if (!this.client) {
+      this.logger?.debug("openai summary skipped", { reason: "missing_api_key", itemKey: item.key, textLength });
+      return this.excerptSummary(item, sourceText);
+    }
+    if (!textLength) {
+      this.logger?.debug("openai summary skipped", { reason: "empty_text", itemKey: item.key, textLength });
+      return this.excerptSummary(item, sourceText);
+    }
 
     try {
+      this.logger?.info("openai summary request started", { model: this.model, itemKey: item.key, textLength });
       const response = await this.client.chat.completions.create({
         model: this.model,
         temperature: 0.2,
@@ -32,16 +43,41 @@ export class Summarizer {
       });
 
       const content = response.choices[0]?.message.content;
-      if (!content) return this.excerptSummary(item, sourceText);
+      if (!content) {
+        this.logger?.warn("openai summary response missing content", {
+          model: this.model,
+          itemKey: item.key,
+          durationMs: Date.now() - startedAt
+        });
+        return this.excerptSummary(item, sourceText);
+      }
       const parsed = JSON.parse(content) as Partial<SummaryResult>;
 
-      if (!parsed.english || !parsed.chinese) return this.excerptSummary(item, sourceText);
+      if (!parsed.english || !parsed.chinese) {
+        this.logger?.warn("openai summary response missing required fields", {
+          model: this.model,
+          itemKey: item.key,
+          durationMs: Date.now() - startedAt
+        });
+        return this.excerptSummary(item, sourceText);
+      }
+      this.logger?.info("openai summary request finished", {
+        model: this.model,
+        itemKey: item.key,
+        durationMs: Date.now() - startedAt
+      });
       return {
         english: truncate(parsed.english, 450),
         chinese: truncate(parsed.chinese, 450),
         source: "openai"
       };
-    } catch {
+    } catch (error) {
+      this.logger?.error("openai summary request failed", {
+        model: this.model,
+        itemKey: item.key,
+        durationMs: Date.now() - startedAt,
+        ...errorData(error)
+      });
       return this.excerptSummary(item, sourceText);
     }
   }
