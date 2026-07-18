@@ -54,17 +54,11 @@ export class Poller {
   }
 
   async pollFeed(feed: FeedRecord): Promise<PollResult> {
+    const startedAt = Date.now();
     const result: PollResult = { feedId: feed.id, sent: 0, failed: 0, skipped: 0 };
 
     try {
       const parsed = await parseFeed(feed.url);
-      await this.store.updateFeed(feed.id, {
-        title: parsed.title || feed.title,
-        siteUrl: parsed.siteUrl || feed.siteUrl,
-        lastCheckedAt: new Date().toISOString(),
-        lastError: undefined
-      });
-
       const items = parsed.items.slice(0, MAX_ITEMS_PER_POLL).reverse();
       for (const subscription of this.store.activeSubscriptionsForFeed(feed.id)) {
         for (const item of items) {
@@ -75,11 +69,30 @@ export class Poller {
           await this.deliver(feed, subscription, item, result);
         }
       }
+
+      await this.store.updateFeed(feed.id, {
+        title: parsed.title || feed.title,
+        siteUrl: parsed.siteUrl || feed.siteUrl,
+        lastCheckedAt: new Date().toISOString(),
+        lastError: result.failed > 0 ? `${result.failed} delivery failed during last check` : undefined,
+        lastCheckStatus: result.failed > 0 ? "failed" : "ok",
+        lastCheckDurationMs: Date.now() - startedAt,
+        lastCheckItemCount: parsed.items.length,
+        lastCheckSent: result.sent,
+        lastCheckFailed: result.failed,
+        lastCheckSkipped: result.skipped
+      });
     } catch (error) {
       result.failed += 1;
       await this.store.updateFeed(feed.id, {
         lastCheckedAt: new Date().toISOString(),
-        lastError: error instanceof Error ? error.message : String(error)
+        lastError: error instanceof Error ? error.message : String(error),
+        lastCheckStatus: "failed",
+        lastCheckDurationMs: Date.now() - startedAt,
+        lastCheckItemCount: 0,
+        lastCheckSent: result.sent,
+        lastCheckFailed: result.failed,
+        lastCheckSkipped: result.skipped
       });
     }
 

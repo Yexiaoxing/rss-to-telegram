@@ -6,6 +6,12 @@ export type FeedRecord = {
   createdAt: string;
   lastCheckedAt?: string;
   lastError?: string;
+  lastCheckStatus?: "ok" | "failed";
+  lastCheckDurationMs?: number;
+  lastCheckItemCount?: number;
+  lastCheckSent?: number;
+  lastCheckFailed?: number;
+  lastCheckSkipped?: number;
 };
 
 export type Subscription = {
