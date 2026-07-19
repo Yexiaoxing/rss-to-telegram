@@ -51,10 +51,23 @@ pnpm install
 pnpm dev
 ```
 
+Equivalent Make targets are available:
+
+```sh
+make install
+make dev
+```
+
 ## Run With Docker Compose
 
 ```sh
 docker compose up --build
+```
+
+Or use:
+
+```sh
+make compose-up
 ```
 
 The dashboard is available on the host at `http://127.0.0.1:3000`. Keep it behind localhost, SSH tunneling, or a trusted reverse proxy because the dashboard has no authentication.
@@ -82,6 +95,15 @@ For channel delivery, add the bot to the channel as an admin with permission to 
 pnpm test
 pnpm build
 pnpm typecheck
+```
+
+Common Make targets:
+
+```sh
+make test
+make build
+make typecheck
+make check
 ```
 
 This service is designed for a single running instance. JSON persistence is not intended for multiple concurrent app instances writing to the same state file.
