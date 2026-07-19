@@ -45,6 +45,9 @@ export type AppState = {
   subscriptions: Record<string, Subscription>;
   seen: Record<string, Record<string, string>>;
   deliveries: Delivery[];
+  settings: {
+    telegraphAccessToken?: string;
+  };
 };
 
 export type FeedItem = {

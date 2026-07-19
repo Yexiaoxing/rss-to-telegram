@@ -10,7 +10,8 @@ function emptyState(): AppState {
     feeds: {},
     subscriptions: {},
     seen: {},
-    deliveries: []
+    deliveries: [],
+    settings: {}
   };
 }
 
@@ -29,7 +30,8 @@ export class JsonStore {
         feeds: parsed.feeds ?? {},
         subscriptions: parsed.subscriptions ?? {},
         seen: parsed.seen ?? {},
-        deliveries: parsed.deliveries ?? []
+        deliveries: parsed.deliveries ?? [],
+        settings: parsed.settings ?? {}
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -108,5 +110,14 @@ export class JsonStore {
     return Object.values(this.state.subscriptions).filter(
       (subscription) => subscription.chatId === chatId && subscription.active
     );
+  }
+
+  telegraphAccessToken(): string | undefined {
+    return this.state.settings.telegraphAccessToken;
+  }
+
+  async setTelegraphAccessToken(accessToken: string): Promise<void> {
+    this.state.settings.telegraphAccessToken = accessToken;
+    await this.save();
   }
 }

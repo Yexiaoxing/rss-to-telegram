@@ -1,5 +1,5 @@
 import type { Telegraf } from "telegraf";
-import { extractArticle } from "./article.js";
+import { extractArticle, type ArticleContent } from "./article.js";
 import type { AppConfig } from "./config.js";
 import { parseFeed } from "./feed.js";
 import { stableId } from "./ids.js";
@@ -7,6 +7,7 @@ import { errorData, type Logger } from "./logger.js";
 import { formatTelegramMessage } from "./message.js";
 import { JsonStore } from "./storage.js";
 import { Summarizer } from "./summary.js";
+import type { TelegraphPublisher } from "./telegraph.js";
 import type { FeedItem, FeedRecord, PollResult, Subscription } from "./types.js";
 
 const MAX_ITEMS_PER_POLL = 5;
@@ -22,7 +23,8 @@ export class Poller {
     private readonly bot: Telegraf,
     private readonly summarizer: Summarizer,
     private readonly config: AppConfig,
-    private readonly logger?: Logger
+    private readonly logger?: Logger,
+    private readonly telegraph?: TelegraphPublisher
   ) {}
 
   start(): void {
@@ -140,13 +142,15 @@ export class Poller {
       this.logger?.debug("feed poll started", { feedId: feed.id, feedUrl: feed.url, subscriptions: subscriptions.length });
       const parsed = await parseFeed(feed.url);
       const items = parsed.items.slice(0, MAX_ITEMS_PER_POLL).reverse();
+      const articleCache = new Map<string, ArticleContent | undefined>();
+      const telegraphCache = new Map<string, string | undefined>();
       for (const subscription of subscriptions) {
         for (const item of items) {
           if (this.store.hasSeen(subscription.id, item.key)) {
             result.skipped += 1;
             continue;
           }
-          await this.deliver(feed, subscription, item, result);
+          await this.deliver(feed, subscription, item, result, articleCache, telegraphCache);
         }
       }
 
@@ -196,11 +200,14 @@ export class Poller {
     feed: FeedRecord,
     subscription: Subscription,
     item: FeedItem,
-    result: PollResult
+    result: PollResult,
+    articleCache: Map<string, ArticleContent | undefined>,
+    telegraphCache: Map<string, string | undefined>
   ): Promise<void> {
-    const article = item.link ? await extractArticle(item.link) : undefined;
+    const article = await this.articleForItem(item, articleCache);
+    const telegraphUrl = article ? await this.telegraphUrlForItem(feed, item, article, telegraphCache) : undefined;
     const summary = await this.summarizer.summarize(item, article?.text || item.contentText);
-    const message = formatTelegramMessage(feed, item, summary);
+    const message = formatTelegramMessage(feed, item, summary, telegraphUrl);
 
     try {
       if (item.imageUrl && message.length < 1024) {
@@ -254,6 +261,25 @@ export class Poller {
       });
       result.failed += 1;
     }
+  }
+
+  private async articleForItem(item: FeedItem, cache: Map<string, ArticleContent | undefined>): Promise<ArticleContent | undefined> {
+    if (cache.has(item.key)) return cache.get(item.key);
+    const article = item.link ? await extractArticle(item.link) : undefined;
+    cache.set(item.key, article);
+    return article;
+  }
+
+  private async telegraphUrlForItem(
+    feed: FeedRecord,
+    item: FeedItem,
+    article: ArticleContent,
+    cache: Map<string, string | undefined>
+  ): Promise<string | undefined> {
+    if (cache.has(item.key)) return cache.get(item.key);
+    const url = await this.telegraph?.publish(feed, item, article);
+    cache.set(item.key, url);
+    return url;
   }
 }
 

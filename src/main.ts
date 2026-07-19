@@ -5,6 +5,7 @@ import { errorData, Logger, parseLogLevel } from "./logger.js";
 import { Poller } from "./poller.js";
 import { JsonStore } from "./storage.js";
 import { Summarizer } from "./summary.js";
+import { TelegraphPublisher } from "./telegraph.js";
 import { createWebApp } from "./web.js";
 
 async function main(): Promise<void> {
@@ -26,7 +27,8 @@ async function main(): Promise<void> {
     logger.child({ component: "openai" })
   );
   summarizer.logConfiguration();
-  const poller = new Poller(store, bot, summarizer, config, logger.child({ component: "poller" }));
+  const telegraph = new TelegraphPublisher(store, config, logger.child({ component: "telegraph" }));
+  const poller = new Poller(store, bot, summarizer, config, logger.child({ component: "poller" }), telegraph);
   registerManualCheckCommands(bot, store, poller, logger.child({ component: "telegram" }));
   const app = createWebApp(store, poller, logger.child({ component: "web" }));
   const server = createServer(app);

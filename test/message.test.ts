@@ -22,6 +22,18 @@ describe("message formatting", () => {
     expect(message).toContain("中文摘要");
     expect(message).toContain("https://example.com/post?a=1&amp;b=2");
   });
+
+  it("includes a Telegraph Instant View link when provided", () => {
+    const message = formatTelegramMessage(
+      { id: "feed", url: "https://example.com/rss", createdAt: "now" },
+      { key: "item", title: "Headline", link: "https://example.com/post" },
+      { english: "English summary", chinese: "中文摘要", source: "openai" },
+      "https://telegra.ph/headline-01-01"
+    );
+
+    expect(message).toContain("Instant View");
+    expect(message).toContain("https://telegra.ph/headline-01-01");
+  });
 });
 
 describe("stableId", () => {

@@ -5,6 +5,7 @@ import { stripHtml, truncate } from "./ids.js";
 export type ArticleContent = {
   title?: string;
   text: string;
+  html?: string;
 };
 
 export async function extractArticle(url: string, timeoutMs = 12000): Promise<ArticleContent | undefined> {
@@ -32,7 +33,8 @@ export async function extractArticle(url: string, timeoutMs = 12000): Promise<Ar
     if (!text) return undefined;
     return {
       title: article?.title || undefined,
-      text: truncate(text, 12000)
+      text: truncate(text, 12000),
+      html: article?.content || undefined
     };
   } catch {
     return undefined;

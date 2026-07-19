@@ -14,6 +14,9 @@ export type AppConfig = {
   webHost: string;
   webPort: number;
   logLevel: LogLevel;
+  telegraphAccessToken?: string;
+  telegraphAuthorName: string;
+  telegraphAuthorUrl?: string;
 };
 
 function requireEnv(name: string): string {
@@ -76,6 +79,9 @@ export function loadConfig(): AppConfig {
     pollIntervalSeconds: numberEnv("POLL_INTERVAL_SECONDS", 300),
     webHost: process.env.WEB_HOST?.trim() || "127.0.0.1",
     webPort: numberEnv("WEB_PORT", 3000),
-    logLevel: parseLogLevel(process.env.LOG_LEVEL?.trim())
+    logLevel: parseLogLevel(process.env.LOG_LEVEL?.trim()),
+    telegraphAccessToken: process.env.TELEGRAPH_ACCESS_TOKEN?.trim() || undefined,
+    telegraphAuthorName: process.env.TELEGRAPH_AUTHOR_NAME?.trim() || "RSS to Telegram",
+    telegraphAuthorUrl: optionalHttpUrlEnv("TELEGRAPH_AUTHOR_URL")
   };
 }

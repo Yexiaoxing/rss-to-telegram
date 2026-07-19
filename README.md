@@ -9,6 +9,7 @@ A self-hosted Node.js service that watches RSS/Atom feeds and posts new items to
 - Polling RSS/Atom feeds with per-subscription duplicate prevention.
 - Best-effort article extraction with Readability.
 - OpenAI bilingual summaries when `OPENAI_API_KEY` is configured; feed excerpts are used as fallback.
+- Best-effort telegra.ph pages from extracted article content for Telegram Instant View.
 - Local dashboard bound to `127.0.0.1:3000` through Docker Compose.
 - Atomic JSON state writes in `./data/rss-to-telegram.json`.
 
@@ -37,6 +38,9 @@ Optional:
 - `WEB_PORT`: defaults to `3000`.
 - `DATA_FILE`: defaults to `./data/rss-to-telegram.json` locally and `/app/data/rss-to-telegram.json` in Compose.
 - `LOG_LEVEL`: structured JSON log level, one of `debug`, `info`, `warn`, or `error`. Defaults to `info`.
+- `TELEGRAPH_ACCESS_TOKEN`: optional telegra.ph access token. If omitted, the service creates and stores one in the JSON data file.
+- `TELEGRAPH_AUTHOR_NAME`: author name shown on telegra.ph pages. Defaults to `RSS to Telegram`.
+- `TELEGRAPH_AUTHOR_URL`: optional author link shown on telegra.ph pages.
 
 Logs are written to stdout/stderr as JSON objects so Docker Compose and common log collectors can parse them. Use `LOG_LEVEL=debug` when diagnosing feed parsing or Telegram delivery behavior.
 
