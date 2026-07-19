@@ -37,6 +37,7 @@ async function main(): Promise<void> {
   });
 
   poller.start();
+  void summarizer.testIntegration();
   void startTelegramBot();
 
   const shutdown = async (signal: string) => {

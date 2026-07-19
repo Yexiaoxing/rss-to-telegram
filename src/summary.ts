@@ -39,6 +39,42 @@ export class Summarizer {
     });
   }
 
+  async testIntegration(): Promise<boolean> {
+    const startedAt = Date.now();
+    if (!this.client) {
+      this.logger?.info("openai integration test skipped", { reason: "missing_api_key" });
+      return false;
+    }
+
+    try {
+      this.logger?.info("openai integration test started", { model: this.model, baseURL: publicBaseURL(this.baseURL) });
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        temperature: 0,
+        messages: [
+          { role: "system", content: "Reply with only: ok" },
+          { role: "user", content: "ok" }
+        ]
+      });
+      const content = response.choices[0]?.message.content?.trim() || "";
+      this.logger?.info("openai integration test finished", {
+        model: this.model,
+        baseURL: publicBaseURL(this.baseURL),
+        durationMs: Date.now() - startedAt,
+        responseReceived: Boolean(content)
+      });
+      return Boolean(content);
+    } catch (error) {
+      this.logger?.warn("openai integration test failed", {
+        model: this.model,
+        baseURL: publicBaseURL(this.baseURL),
+        durationMs: Date.now() - startedAt,
+        ...openAIErrorData(error)
+      });
+      return false;
+    }
+  }
+
   async summarize(item: FeedItem, articleText?: string): Promise<SummaryResult> {
     const startedAt = Date.now();
     const sourceText = articleText || item.contentText || item.title;
