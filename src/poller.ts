@@ -213,11 +213,11 @@ export class Poller {
       if (item.imageUrl && message.length < 1024) {
         await this.bot.telegram.sendPhoto(subscription.chatId, item.imageUrl, {
           caption: message,
-          parse_mode: "HTML"
+          parse_mode: "MarkdownV2"
         });
       } else {
         await this.bot.telegram.sendMessage(subscription.chatId, message, {
-          parse_mode: "HTML"
+          parse_mode: "MarkdownV2"
         });
       }
       await this.store.markSeen(subscription.id, item.key);

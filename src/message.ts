@@ -1,12 +1,14 @@
 import { truncate } from "./ids.js";
 import type { FeedItem, FeedRecord, SummaryResult } from "./types.js";
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+const MARKDOWN_V2_SPECIAL_CHARS = /[_*\[\]()~`>#+\-=|{}.!\\]/g;
+
+function escapeMarkdown(value: string): string {
+  return value.replace(MARKDOWN_V2_SPECIAL_CHARS, "\\$&");
+}
+
+function escapeMarkdownUrl(value: string): string {
+  return value.replace(/[)\\]/g, "\\$&");
 }
 
 function formatDate(value?: string): string | undefined {
@@ -17,16 +19,21 @@ function formatDate(value?: string): string | undefined {
 }
 
 export function formatTelegramMessage(feed: FeedRecord, item: FeedItem, summary: SummaryResult, telegraphUrl?: string): string {
+  const meta = [feed.title, formatDate(item.publishedAt)].filter(Boolean).map((value) => escapeMarkdown(value!)).join(" · ");
+  const links = [
+    telegraphUrl ? `[Instant View](${escapeMarkdownUrl(telegraphUrl)})` : undefined,
+    item.link ? `[Original](${escapeMarkdownUrl(item.link)})` : undefined
+  ].filter(Boolean);
+
   const lines = [
-    `<b>${escapeHtml(truncate(item.title, 180))}</b>`,
-    feed.title ? `Source: ${escapeHtml(feed.title)}` : undefined,
-    formatDate(item.publishedAt) ? `Published: ${formatDate(item.publishedAt)}` : undefined,
+    `*${escapeMarkdown(truncate(item.title, 180))}*`,
+    meta ? `_${meta}_` : undefined,
     "",
-    `<b>English</b>: ${escapeHtml(summary.english)}`,
-    `<b>中文</b>: ${escapeHtml(summary.chinese)}`,
-    summary.source === "excerpt" ? "\n<i>AI summary was unavailable; showing feed excerpt.</i>" : undefined,
-    telegraphUrl ? `\n<a href="${escapeHtml(telegraphUrl)}">Instant View</a>` : undefined,
-    item.link ? `\n<a href="${escapeHtml(item.link)}">Open original</a>` : undefined
+    `*EN*\n${escapeMarkdown(summary.english)}`,
+    "",
+    `*ZH*\n${escapeMarkdown(summary.chinese)}`,
+    summary.source === "excerpt" ? "\n_AI summary unavailable; feed excerpt shown\._" : undefined,
+    links.length > 0 ? `\n${links.join("  \\|  ")}` : undefined
   ];
 
   return lines.filter(Boolean).join("\n");
