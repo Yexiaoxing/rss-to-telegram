@@ -8,8 +8,8 @@ A self-hosted Node.js service that watches RSS/Atom feeds and posts new items to
 - Admin-only command access via `TELEGRAM_ADMIN_IDS`.
 - Polling RSS/Atom feeds with per-subscription duplicate prevention.
 - Best-effort article extraction with Readability.
-- OpenAI bilingual summaries when `OPENAI_API_KEY` is configured; feed excerpts are used as fallback.
-- Best-effort telegra.ph pages from extracted article content for Telegram Instant View.
+- OpenAI bilingual summaries, Chinese title translation, and Chinese article translation when `OPENAI_API_KEY` is configured; feed excerpts are used as fallback.
+- Best-effort telegra.ph pages from translated article content for Telegram Instant View.
 - Local dashboard bound to `127.0.0.1:3000` through Docker Compose.
 - Atomic JSON state writes in `./data/rss-to-telegram.json`.
 

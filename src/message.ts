@@ -19,6 +19,8 @@ function formatDate(value?: string): string | undefined {
 }
 
 export function formatTelegramMessage(feed: FeedRecord, item: FeedItem, summary: SummaryResult, telegraphUrl?: string): string {
+  const displayTitle = summary.chineseTitle || item.title;
+  const originalTitle = summary.chineseTitle ? item.title : undefined;
   const meta = [feed.title, formatDate(item.publishedAt)].filter(Boolean).map((value) => escapeMarkdown(value!)).join(" · ");
   const links = [
     telegraphUrl ? `[Instant View](${escapeMarkdownUrl(telegraphUrl)})` : undefined,
@@ -26,7 +28,8 @@ export function formatTelegramMessage(feed: FeedRecord, item: FeedItem, summary:
   ].filter(Boolean);
 
   const lines = [
-    `*${escapeMarkdown(truncate(item.title, 180))}*`,
+    `*${escapeMarkdown(truncate(displayTitle, 180))}*`,
+    originalTitle ? `_${escapeMarkdown(truncate(originalTitle, 180))}_` : undefined,
     meta ? `_${meta}_` : undefined,
     "",
     `*EN*\n${escapeMarkdown(summary.english)}`,

@@ -69,6 +69,8 @@ export type ParsedFeed = {
 export type SummaryResult = {
   english: string;
   chinese: string;
+  chineseTitle?: string;
+  chineseArticle?: string;
   source: "openai" | "excerpt";
 };
 

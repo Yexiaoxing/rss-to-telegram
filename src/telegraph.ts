@@ -7,6 +7,7 @@ import type { JsonStore } from "./storage.js";
 import type { FeedItem, FeedRecord } from "./types.js";
 
 type TelegraphNode = string | { tag: string; attrs?: Record<string, string>; children?: TelegraphNode[] };
+type TelegraphTranslation = { title?: string; text?: string };
 
 const CREATE_ACCOUNT_URL = "https://api.telegra.ph/createAccount";
 const CREATE_PAGE_URL = "https://api.telegra.ph/createPage";
@@ -21,14 +22,14 @@ export class TelegraphPublisher {
     private readonly logger?: Logger
   ) {}
 
-  async publish(feed: FeedRecord, item: FeedItem, article: ArticleContent): Promise<string | undefined> {
+  async publish(feed: FeedRecord, item: FeedItem, article: ArticleContent, translation?: TelegraphTranslation): Promise<string | undefined> {
     const startedAt = Date.now();
-    const content = article.html ? htmlToTelegraphNodes(article.html) : textToTelegraphNodes(article.text);
+    const content = translation?.text ? textToTelegraphNodes(translation.text) : article.html ? htmlToTelegraphNodes(article.html) : textToTelegraphNodes(article.text);
     if (content.length === 0) return undefined;
 
     try {
       const accessToken = await this.accessToken();
-      const title = truncate(article.title || item.title, 256);
+      const title = truncate(translation?.title || article.title || item.title, 256);
       const pageUrl = await this.createPage(accessToken, title, content, item.link || feed.siteUrl);
       this.logger?.info("telegraph page created", {
         feedId: feed.id,

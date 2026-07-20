@@ -19,9 +19,17 @@ const SUMMARY_RESPONSE_FORMAT = {
         chinese: {
           type: "string",
           description: "A concise one-sentence Chinese summary."
+        },
+        chineseTitle: {
+          type: "string",
+          description: "A natural Chinese translation of the article title."
+        },
+        chineseArticle: {
+          type: "string",
+          description: "A faithful Chinese translation of the article text, preserving paragraph breaks when useful."
         }
       },
-      required: ["english", "chinese"]
+      required: ["english", "chinese", "chineseTitle", "chineseArticle"]
     }
   }
 } as const;
@@ -125,7 +133,7 @@ export class Summarizer {
           {
             role: "system",
             content:
-              "Summarize RSS news for Telegram. Return only the structured summary requested by the response schema."
+              "Summarize and translate RSS news for Telegram. Return only the structured content requested by the response schema. Keep the Chinese article translation faithful and readable."
           },
           {
             role: "user",
@@ -146,7 +154,7 @@ export class Summarizer {
       }
       const parsed = JSON.parse(content) as Partial<SummaryResult>;
 
-      if (!parsed.english || !parsed.chinese) {
+      if (!parsed.english || !parsed.chinese || !parsed.chineseTitle || !parsed.chineseArticle) {
         this.logger?.warn("openai summary response missing required fields", {
           model: this.model,
           itemKey: item.key,
@@ -163,6 +171,8 @@ export class Summarizer {
       return {
         english: truncate(parsed.english, 450),
         chinese: truncate(parsed.chinese, 450),
+        chineseTitle: truncate(parsed.chineseTitle, 180),
+        chineseArticle: truncate(parsed.chineseArticle, 12000),
         source: "openai"
       };
     } catch (error) {

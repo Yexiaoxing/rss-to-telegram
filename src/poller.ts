@@ -8,7 +8,7 @@ import { formatTelegramMessage } from "./message.js";
 import { JsonStore } from "./storage.js";
 import { Summarizer } from "./summary.js";
 import type { TelegraphPublisher } from "./telegraph.js";
-import type { FeedItem, FeedRecord, PollResult, Subscription } from "./types.js";
+import type { FeedItem, FeedRecord, PollResult, Subscription, SummaryResult } from "./types.js";
 
 const MAX_ITEMS_PER_POLL = 5;
 
@@ -205,8 +205,8 @@ export class Poller {
     telegraphCache: Map<string, string | undefined>
   ): Promise<void> {
     const article = await this.articleForItem(item, articleCache);
-    const telegraphUrl = article ? await this.telegraphUrlForItem(feed, item, article, telegraphCache) : undefined;
     const summary = await this.summarizer.summarize(item, article?.text || item.contentText);
+    const telegraphUrl = article ? await this.telegraphUrlForItem(feed, item, article, summary, telegraphCache) : undefined;
     const message = formatTelegramMessage(feed, item, summary, telegraphUrl);
 
     try {
@@ -274,10 +274,14 @@ export class Poller {
     feed: FeedRecord,
     item: FeedItem,
     article: ArticleContent,
+    summary: SummaryResult,
     cache: Map<string, string | undefined>
   ): Promise<string | undefined> {
     if (cache.has(item.key)) return cache.get(item.key);
-    const url = await this.telegraph?.publish(feed, item, article);
+    const url = await this.telegraph?.publish(feed, item, article, {
+      title: summary.chineseTitle,
+      text: summary.chineseArticle
+    });
     cache.set(item.key, url);
     return url;
   }

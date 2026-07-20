@@ -35,6 +35,17 @@ describe("message formatting", () => {
     expect(message).toContain("https://telegra.ph/headline-01-01");
     expect(message).toContain("\\|");
   });
+
+  it("uses the Chinese title when OpenAI provides one", () => {
+    const message = formatTelegramMessage(
+      { id: "feed", url: "https://example.com/rss", createdAt: "now" },
+      { key: "item", title: "Original Title" },
+      { english: "English summary", chinese: "中文摘要", chineseTitle: "中文标题", source: "openai" }
+    );
+
+    expect(message).toContain("*中文标题*");
+    expect(message).toContain("_Original Title_");
+  });
 });
 
 describe("stableId", () => {
