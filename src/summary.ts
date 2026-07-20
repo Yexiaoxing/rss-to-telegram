@@ -3,6 +3,29 @@ import { truncate } from "./ids.js";
 import { errorData, type Logger } from "./logger.js";
 import type { FeedItem, SummaryResult } from "./types.js";
 
+const SUMMARY_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    name: "rss_item_summary",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        english: {
+          type: "string",
+          description: "A concise one-sentence English summary."
+        },
+        chinese: {
+          type: "string",
+          description: "A concise one-sentence Chinese summary."
+        }
+      },
+      required: ["english", "chinese"]
+    }
+  }
+} as const;
+
 export type SummarizerOptions = {
   apiKey?: string;
   model: string;
@@ -102,14 +125,14 @@ export class Summarizer {
           {
             role: "system",
             content:
-              "Summarize RSS news for Telegram. Return strict JSON with keys english and chinese. Each value must be one concise sentence."
+              "Summarize RSS news for Telegram. Return only the structured summary requested by the response schema."
           },
           {
             role: "user",
             content: `Title: ${item.title}\nURL: ${item.link || ""}\nText:\n${truncate(sourceText, 10000)}`
           }
         ],
-        response_format: { type: "json_object" }
+        response_format: SUMMARY_RESPONSE_FORMAT
       });
 
       const content = response.choices[0]?.message.content;
