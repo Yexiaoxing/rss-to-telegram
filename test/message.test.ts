@@ -46,6 +46,16 @@ describe("message formatting", () => {
     expect(message).toContain("*中文标题*");
     expect(message).toContain("_Original Title_");
   });
+
+  it("escapes MarkdownV2 in the excerpt fallback notice", () => {
+    const message = formatTelegramMessage(
+      { id: "feed", url: "https://example.com/rss", createdAt: "now" },
+      { key: "item", title: "Headline" },
+      { english: "Feed excerpt", chinese: "订阅摘要", source: "excerpt" }
+    );
+
+    expect(message).toContain("_AI summary unavailable; feed excerpt shown\\._");
+  });
 });
 
 describe("stableId", () => {

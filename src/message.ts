@@ -35,7 +35,7 @@ export function formatTelegramMessage(feed: FeedRecord, item: FeedItem, summary:
     `*EN*\n${escapeMarkdown(summary.english)}`,
     "",
     `*ZH*\n${escapeMarkdown(summary.chinese)}`,
-    summary.source === "excerpt" ? "\n_AI summary unavailable; feed excerpt shown\._" : undefined,
+    summary.source === "excerpt" ? "\n_AI summary unavailable; feed excerpt shown\\._" : undefined,
     links.length > 0 ? `\n${links.join("  \\|  ")}` : undefined
   ];
 
